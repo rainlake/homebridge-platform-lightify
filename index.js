@@ -89,7 +89,7 @@ LightifyPlatform.prototype.refreshTimer = function() {
 			data.result.forEach(function(light) {
 				if(light.type && lightify.isLight(light.type)) {
 					var assc = self.foundAccessories.find(function(assc) {
-						return assc.mac == light.mac;
+						return assc.device && assc.device.mac == light.mac;
 					})
 					if(assc) {
 						assc.updateDevice(light);
