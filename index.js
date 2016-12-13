@@ -148,20 +148,24 @@ function LightifyAccessory(platform, device) {
             callback(null, self.device.brightness);
         })
         .on('set', function(brightness, callback) {
-			var connection = new lightify.lightify(platform.config.bridge_ip);
-			connection.connect().then(function() {
-				return connection.nodeBrightness(self.device.mac, brightness, 90);
-			}).then(function() {
-				self.device.brightness = brightness;
-				callback(null);
-				return connection.dispose();
-			});
+			if(self.setBrightnessTimer) {
+				clearTimeout(self.setBrightnessTimer);
+			}
+			self.setBrightnessTimer = setTimeout(function() {
+				var connection = new lightify.lightify(platform.config.bridge_ip);
+				connection.connect().then(function() {
+					return connection.nodeBrightness(self.device.mac, brightness);
+				}).then(function() {
+					self.device.brightness = brightness;
+					return connection.dispose();
+				}); 
+			}, 80);
+			callback(null);
         });
     }
 
     this.service.getCharacteristic(Characteristic.On)
         .on('get', function(callback) {
-			self.log.info('get on off status of device [%s]', self.device.name);
 			callback(null, self.device.online == 2 && self.device.status);
         })
         .on('set', function(state, callback) {
