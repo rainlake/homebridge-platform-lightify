@@ -2,7 +2,7 @@ var moment = require('moment');
 var util = require('util');
 var lightify = require('node-lightify');
 var Service, Characteristic;
-var Lightbulb;
+var Lightbulb, Outlet;
 
 'use strict';
 
@@ -18,6 +18,16 @@ module.exports = function(homebridge) {
     };
     util.inherits(Lightbulb, Service);
     Lightbulb.UUID = '00000043-0000-1000-8000-0026BB765291';
+
+	Outlet = function(displayName, subtype) {
+        Service.call(this, displayName, '00000047-0000-1000-8000-0026BB765291', subtype);
+        this.addCharacteristic(Characteristic.On);
+
+        this.addOptionalCharacteristic(Characteristic.Name);
+    };
+    util.inherits(Outlet, Service);
+    Outlet.UUID = '00000047-0000-1000-8000-0026BB765291';
+
     homebridge.registerPlatform("homebridge-platform-lightify", "Lightify", LightifyPlatform);
 }
 
@@ -87,13 +97,11 @@ LightifyPlatform.prototype.refreshTimer = function() {
 			return connection.discover();
 		}).then(function(data) {
 			data.result.forEach(function(light) {
-				if(light.type && lightify.isLight(light.type)) {
-					var assc = self.foundAccessories.find(function(assc) {
-						return assc.device && assc.device.mac == light.mac;
-					})
-					if(assc) {
-						assc.updateDevice(light);
-					}
+				var assc = self.foundAccessories.find(function(assc) {
+					return assc.device && assc.device.mac == light.mac;
+				});
+				if(assc) {
+					assc.updateDevice(light);
 				}
 			});			
 			connection.dispose();
@@ -113,11 +121,14 @@ LightifyPlatform.prototype.accessories = function(callback) {
         self.foundAccessories = [];
         data.result.forEach(function(light) {
             if(light.type && lightify.isLight(light.type)) {
+				self.log.info('Lightify Light [%s]', light.name);
                 self.foundAccessories.push(new LightifyAccessory(self, light));
-            }
+            } else if (light.type && lightify.isPlug(light.type)) {
+				self.log.info('Lightify Bulb [%s]', light.name);
+				self.foundAccessories.push(new LightifyOutlet(self, light));
+			}
         });
-		self.log.info('Lightify Light:Loop finished');
-		//connection.dispose();
+		connection.dispose();
 		callback(self.foundAccessories);
 		self.refreshTimer();
     }).catch(function(error) {
@@ -257,4 +268,48 @@ LightifyAccessory.prototype.getServices = function() {
     }
     return services;
 }
-
+function LightifyOutlet(platform, device) {
+    this.log = platform.log;
+	this.device = device;
+    this.name = device.name;
+	this.platform = platform;
+    
+    this.service = new Outlet(device.name);
+    
+    this.service.getCharacteristic(Characteristic.Name).value = device.name;
+    this.service.getCharacteristic(Characteristic.On).value = device.status;
+    
+	var self = this;
+    this.service.getCharacteristic(Characteristic.On)
+        .on('get', function(callback) {
+			callback(null, self.device.online == 2 && self.device.status);
+        })
+        .on('set', function(state, callback) {
+            var connection = new lightify.lightify(platform.config.bridge_ip);
+			connection.connect().then(function() {
+				return connection.nodeOnOff(self.device.mac, state ? true : false);
+			}).then(function() {
+				self.device.status = state;
+				callback(null);
+				return connection.dispose();
+			});           
+        });
+}
+LightifyOutlet.prototype.updateDevice = function(device) {
+	this.device = device;
+}
+LightifyOutlet.prototype.getServices = function() {
+    var services = [];
+    var service = new Service.AccessoryInformation();
+    service.setCharacteristic(Characteristic.Name, this.name)
+        .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
+        .setCharacteristic(Characteristic.Model, 'Lightify Outlet')
+        .setCharacteristic(Characteristic.SerialNumber, '')
+        .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
+        .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
+    services.push(service);
+    if(this.service) {
+        services.push(this.service);
+    }
+    return services;
+}
