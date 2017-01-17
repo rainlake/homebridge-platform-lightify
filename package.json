@@ -1,6 +1,6 @@
 {
   "name": "homebridge-platform-lightify",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Lightify plugin for homebridge: https://github.com/nfarina/homebridge",
   "license": "ISC",
   "keywords": [
@@ -20,6 +20,6 @@
   "dependencies": {
     "promise": ">=7.1.1",
     "moment": ">=2.4.0",
-    "node-lightify": "^2.0.2"
+    "node-lightify": "2.0.3"
   }
 }
