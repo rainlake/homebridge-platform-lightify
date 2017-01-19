@@ -2,7 +2,7 @@ var moment = require('moment');
 var util = require('util');
 var lightify = require('node-lightify');
 var Service, Characteristic;
-var Lightbulb, Outlet;
+var Lightbulb;
 
 'use strict';
 
@@ -18,15 +18,6 @@ module.exports = function(homebridge) {
     };
     util.inherits(Lightbulb, Service);
     Lightbulb.UUID = '00000043-0000-1000-8000-0026BB765291';
-
-    Outlet = function(displayName, subtype) {
-        Service.call(this, displayName, '00000047-0000-1000-8000-0026BB765291', subtype);
-        this.addCharacteristic(Characteristic.On);
-
-        this.addOptionalCharacteristic(Characteristic.Name);
-    };
-    util.inherits(Outlet, Service);
-    Outlet.UUID = '00000047-0000-1000-8000-0026BB765291';
 
     homebridge.registerPlatform("homebridge-platform-lightify", "Lightify", LightifyPlatform);
 }
@@ -281,12 +272,17 @@ function LightifyOutlet(platform, device) {
     this.name = device.name;
     this.platform = platform;
     
-    this.service = new Outlet(device.name);
+    this.service = new Service.Outlet(device.name);
     
     this.service.getCharacteristic(Characteristic.Name).value = device.name;
     this.service.getCharacteristic(Characteristic.On).value = device.status;
+    this.service.getCharacteristic(Characteristic.OutletInUse).value = true;
     
     var self = this;
+    this.service.getCharacteristic(Characteristic.OutletInUse)
+    .on('get', function(callback) {
+        callback(null, true);
+    });
     this.service.getCharacteristic(Characteristic.On)
         .on('get', function(callback) {
             callback(null, self.device.online == 2 && self.device.status);
