@@ -20,6 +20,6 @@
   "dependencies": {
     "promise": ">=7.1.1",
     "moment": ">=2.4.0",
-    "node-lightify": "2.0.4"
+    "node-lightify": ">=2.0.6"
   }
 }
