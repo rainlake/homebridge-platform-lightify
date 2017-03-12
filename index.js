@@ -9,11 +9,11 @@ var Lightbulb;
 module.exports = function(homebridge) {
     Service = homebridge.hap.Service;
     Characteristic = homebridge.hap.Characteristic;
-    
+
     Lightbulb = function(displayName, subtype) {
         Service.call(this, displayName, '00000043-0000-1000-8000-0026BB765291', subtype);
         this.addCharacteristic(Characteristic.On);
-        
+
         this.addOptionalCharacteristic(Characteristic.Name);
     };
     util.inherits(Lightbulb, Service);
@@ -49,7 +49,7 @@ function HSVtoRGB(h, s, v) {
 }
 /* accepts parameters
  * r  Object = {r:x, g:y, b:z}
- * OR 
+ * OR
  * r, g, b
 */
 function RGBtoHSV(r, g, b) {
@@ -75,18 +75,21 @@ function RGBtoHSV(r, g, b) {
         v: v
     };
 }
+function temperatureToHue(temperature) {
+    return (temperature - 1000 / 7000.0) * 180.0;
+}
+function HSVToTemperature(hsv) {
+
+}
 function LightifyPlatform(log, config) {
     this.config = config;
     this.log = log;
 }
-LightifyPlatform.prototype.refreshTimer = function() {
+LightifyPlatform.prototype.refreshTimer = function(timeout) {
     var self = this;
     setTimeout(function() {
         var connection = new lightify.lightify(self.config.bridge_ip, self.log);
-        connection.connect().then(function() {
-            self.log.info('Connected to Lightify Bridge');
-            return connection.discover();
-        }).then(function(data) {
+        self.discover(connection).then(function(data) {
             self.log.info('Discover Success');
             data.result.forEach(function(light) {
                 var assc = self.foundAccessories.find(function(assc) {
@@ -95,31 +98,71 @@ LightifyPlatform.prototype.refreshTimer = function() {
                 if(assc) {
                     assc.updateDevice(light);
                 }
-            });            
+            });
             connection.dispose();
         }).catch(function(error) {
             self.log.info('Discover Failed');
             self.log.error(error);
         });
-        self.refreshTimer();
-    }, 30 * 1000);
+        self.refreshTimer(30);
+    }, (timeout || 30) * 1000);
+}
+LightifyPlatform.prototype.discover = function(connection) {
+    var self = this;
+    return connection.connect().then(function() {
+        self.log.info('Connected to Lightify Bridge');
+        //have to discover nodes for light status of group
+        return connection.discover();
+    }).then(function(data) {
+        return !self.config.showGroups ? Promise.resolve(data) :
+        new Promise(function(resolve, reject) {
+            connection.discoverZone()
+            .then(function(zones) {
+                //get zone info. if one of them is off, then this group is off
+                Promise.all(zones.result.map(function(zone){
+                    return connection.getZoneInfo(zone.id)
+                    .then(function(zoneInfo) {
+                        zone.status = 1; // default to on
+                        if(!zoneInfo.result || zoneInfo.result.length == 0) {
+                            return;
+                        }
+                        for (var mac of zoneInfo.result[0].devices) {
+                            var device = data.result.find(function(d) {
+                                return d.mac === mac;
+                            });
+                            if (device && device.online && device.status === 0) {
+                                zone.status = 0;
+                                break;
+                            }
+                        }
+                    }).catch(function(error) {
+                        reject(error);
+                    });
+                })).then(function() {
+                    Array.prototype.push.apply(data.result, zones.result);
+                    resolve(data);
+                });
+            })
+            .catch(function(error) {
+                reject(error);
+            })
+        });
+    });
 }
 LightifyPlatform.prototype.accessories = function(callback) {
     var self = this;
     var connection = new lightify.lightify(this.config.bridge_ip, self.log);
-    connection.connect().then(function() {
-        self.log.info('Connected to Lightify Bridge');
-        return connection.discover();
-    }).then(function(data) {
-        self.log.info('Discovered devices');
+    this.discover(connection).then(function(data) {
         self.foundAccessories = [];
         data.result.forEach(function(light) {
-            if(light.type && lightify.isLight(light.type)) {
+            if(!self.config.hideNodes && light.type && lightify.isLight(light.type)) {
                 self.log.info('Lightify Light [%s]', light.name);
                 self.foundAccessories.push(new LightifyAccessory(self, light));
-            } else if (light.type && lightify.isPlug(light.type)) {
+            } else if (!self.config.hideNodes && light.type && lightify.isPlug(light.type)) {
                 self.log.info('Lightify Bulb [%s]', light.name);
                 self.foundAccessories.push(new LightifyOutlet(self, light));
+            } else if(!light.type) {
+                self.foundAccessories.push(new LightifyZone(self, light));
             }
         });
         connection.dispose();
@@ -135,18 +178,20 @@ function LightifyAccessory(platform, device) {
     this.device = device;
     this.name = device.name;
     this.platform = platform;
-    
+
     this.service = new Lightbulb(device.name);
-    
+
     this.service.getCharacteristic(Characteristic.Name).value = device.name;
     this.service.getCharacteristic(Characteristic.On).value = device.status;
-    
+
     var self = this;
     if(lightify.isColorSupported(device.type)) {
         this.colorBulb(platform);
+//    } else {
+//        this.temperatureBulb(platform);
     }
     if (lightify.isBrightnessSupported(device.type)) {
-        
+
         this.service.addOptionalCharacteristic(Characteristic.Brightness);
         this.service.getCharacteristic(Characteristic.Brightness).value = self.device.brightness;
         this.service.getCharacteristic(Characteristic.Brightness)
@@ -164,7 +209,7 @@ function LightifyAccessory(platform, device) {
                 }).then(function() {
                     self.device.brightness = brightness;
                     return connection.dispose();
-                }); 
+                });
             }, 80);
             callback(null);
         });
@@ -194,14 +239,14 @@ LightifyAccessory.prototype.setHSV = function(hsv) {
     this.device.red = rgb.r;
     this.device.green = rgb.g;
     this.device.blue = rgb.b;
-    
+
     var self = this;
     if(this.setHSVTimer) {
         clearTimeout(this.setHSVTimer);
     }
     this.setHSVTimer = setTimeout(function() {
         var connection = new lightify.lightify(self.platform.config.bridge_ip, self.log);
-    
+
         connection.connect().then(function() {
             return connection.nodeColor(self.device.mac,
                 self.device.red, self.device.green, self.device.blue, self.device.alpha);
@@ -209,19 +254,19 @@ LightifyAccessory.prototype.setHSV = function(hsv) {
             return connection.dispose();
         });
     }, 100);
-    
+
 }
 LightifyAccessory.prototype.colorBulb = function(platform) {
     this.service.addOptionalCharacteristic(Characteristic.Hue);
     this.service.addOptionalCharacteristic(Characteristic.Saturation);
     this.service.addOptionalCharacteristic(Characteristic.Brightness);
-    
+
     var hsv = RGBtoHSV(this.device.red, this.device.green, this.device.blue);
 
     this.service.getCharacteristic(Characteristic.Hue).value = hsv.h * 360;
     this.service.getCharacteristic(Characteristic.Saturation).value = hsv.h * 100;
     this.service.getCharacteristic(Characteristic.Brightness).value = hsv.v * 100;
-    
+
     var self = this;
     this.service.getCharacteristic(Characteristic.Hue)
     .on('get', function(callback) {
@@ -234,7 +279,7 @@ LightifyAccessory.prototype.colorBulb = function(platform) {
         self.setHSV(hsv);
         callback(null);
     });
-    
+
     this.service.getCharacteristic(Characteristic.Saturation)
     .on('get', function(callback) {
         hsv = RGBtoHSV(self.device.red, self.device.green, self.device.blue);
@@ -244,6 +289,42 @@ LightifyAccessory.prototype.colorBulb = function(platform) {
         hsv = RGBtoHSV(self.device.red, self.device.green, self.device.blue);
         hsv.s = s / 100.0;
         self.setHSV(hsv);
+        callback(null);
+    });
+}
+LightifyAccessory.prototype.temperatureBulb = function(platform) {
+    this.service.addOptionalCharacteristic(Characteristic.Hue);
+    this.service.addOptionalCharacteristic(Characteristic.Saturation);
+    this.service.addOptionalCharacteristic(Characteristic.Brightness);
+
+    this.log.error('temperatureBulb');
+    this.device.temperature = 2700;
+    var hsv = temperatureToHue(this.device.temperature);
+
+    //this.service.getCharacteristic(Characteristic.Hue).value = hsv.h * 360;
+    //this.service.getCharacteristic(Characteristic.Saturation).value = hsv.h * 100;
+    //this.service.getCharacteristic(Characteristic.Brightness).value = hsv.v * 100;
+
+    var self = this;
+    this.service.getCharacteristic(Characteristic.Hue)
+    .on('get', function(callback) {
+        self.log.error('get Hue temp:', self.device.temperature);
+        h = temperatureToHue(self.device.temperature);
+        self.log.error('get Hue:', h);
+        callback(null, h);
+    })
+    .on('set', function(h, callback) {
+        self.log.error('set Hue:', h);
+        callback(null);
+    });
+
+    this.service.getCharacteristic(Characteristic.Saturation)
+    .on('get', function(callback) {
+        self.log.error('get Saturation');
+        callback(null, 1);
+    })
+    .on('set', function(s, callback) {
+        self.log.error("Saturation: ", s);
         callback(null);
     });
 }
@@ -257,8 +338,13 @@ LightifyAccessory.prototype.getServices = function() {
     service.setCharacteristic(Characteristic.Name, this.name)
         .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
         .setCharacteristic(Characteristic.Model, 'Lightify')
-        .setCharacteristic(Characteristic.SerialNumber, '')
-        .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
+        .setCharacteristic(Characteristic.SerialNumber, this.device.friendlyMac)
+        .setCharacteristic(Characteristic.FirmwareRevision,
+            ((this.device.firmware_version >> 24) & 0xFF) + '.' +
+            ((this.device.firmware_version >> 16) & 0xFF) + '.' +
+            ((this.device.firmware_version >> 8) & 0xFF) + '.' +
+            (this.device.firmware_version & 0xFF)
+        )
         .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
     services.push(service);
     if(this.service) {
@@ -271,13 +357,13 @@ function LightifyOutlet(platform, device) {
     this.device = device;
     this.name = device.name;
     this.platform = platform;
-    
+
     this.service = new Service.Outlet(device.name);
-    
+
     this.service.getCharacteristic(Characteristic.Name).value = device.name;
     this.service.getCharacteristic(Characteristic.On).value = device.status;
     this.service.getCharacteristic(Characteristic.OutletInUse).value = true;
-    
+
     var self = this;
     this.service.getCharacteristic(Characteristic.OutletInUse)
     .on('get', function(callback) {
@@ -298,7 +384,7 @@ function LightifyOutlet(platform, device) {
             }).catch(function() {
                 callback(null);
                 return connection.dispose();
-            });           
+            });
         });
 }
 LightifyOutlet.prototype.updateDevice = function(device) {
@@ -310,6 +396,55 @@ LightifyOutlet.prototype.getServices = function() {
     service.setCharacteristic(Characteristic.Name, this.name)
         .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
         .setCharacteristic(Characteristic.Model, 'Lightify Outlet')
+        .setCharacteristic(Characteristic.SerialNumber, '')
+        .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
+        .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
+    services.push(service);
+    if(this.service) {
+        services.push(this.service);
+    }
+    return services;
+}
+
+function LightifyZone(platform, device) {
+    this.log = platform.log;
+    this.device = device;
+    this.name = device.name;
+    this.platform = platform;
+
+    this.service = new Service.Switch(device.name);
+
+    this.service.getCharacteristic(Characteristic.Name).value = device.name;
+    this.service.getCharacteristic(Characteristic.On).value = device.status;
+
+    var self = this;
+    this.service.getCharacteristic(Characteristic.On)
+        .on('get', function(callback) {
+            callback(null, self.device.status);
+        })
+        .on('set', function(state, callback) {
+            var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
+            connection.connect().then(function() {
+                return connection.nodeOnOff(self.device.mac, state ? true : false, true);
+            }).then(function() {
+                self.device.status = state;
+                callback(null);
+                return connection.dispose();
+            }).catch(function() {
+                callback(null);
+                return connection.dispose();
+            });
+        });
+}
+LightifyZone.prototype.updateDevice = function(device) {
+    this.device = device;
+}
+LightifyZone.prototype.getServices = function() {
+    var services = [];
+    var service = new Service.AccessoryInformation();
+    service.setCharacteristic(Characteristic.Name, this.name)
+        .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
+        .setCharacteristic(Characteristic.Model, 'Lightify Group')
         .setCharacteristic(Characteristic.SerialNumber, '')
         .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
         .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
