@@ -119,33 +119,39 @@ LightifyPlatform.prototype.discover = function(connection) {
             connection.discoverZone()
             .then(function(zones) {
                 //get zone info. if one of them is off, then this group is off
-                Promise.all(zones.result.map(function(zone){
-                    return connection.getZoneInfo(zone.id)
-                    .then(function(zoneInfo) {
-                        zone.status = 1; // default to on
-                        if(!zoneInfo.result || zoneInfo.result.length == 0) {
-                            return;
-                        }
-                        for (var mac of zoneInfo.result[0].devices) {
-                            var device = data.result.find(function(d) {
-                                return d.mac === mac;
-                            });
-                            if (device && device.online && device.status === 0) {
-                                zone.status = 0;
-                                break;
+                zones.result.reduce(function(av, zone){
+                    return av.then(function() {
+                        return connection
+                        .getZoneInfo(zone.id)
+                        .then(function(zoneInfo){
+                            zone.status = 1; // default to on
+                            if(!zoneInfo.result || zoneInfo.result.length == 0) {
+                                return Promise.reject('no result for zone');
                             }
-                        }
-                    }).catch(function(error) {
-                        reject(error);
+                            for (var mac of zoneInfo.result[0].devices) {
+                                var device = data.result.find(function(d) {
+                                    return d.mac === mac;
+                                });
+                                if (device && device.online && device.status === 0) {
+                                    zone.status = 0;
+                                    break;
+                                }
+                            }
+                            return Promise.resolve();
+                        });
                     });
-                })).then(function() {
+                }, Promise.resolve())
+                .then(function() {
                     Array.prototype.push.apply(data.result, zones.result);
                     resolve(data);
+                })
+                .catch(function(error) {
+                    reject(error);
                 });
             })
             .catch(function(error) {
                 reject(error);
-            })
+            });
         });
     });
 }
