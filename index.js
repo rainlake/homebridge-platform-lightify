@@ -78,6 +78,15 @@ function RGBtoHSV(r, g, b) {
 function temperatureToHue(temperature) {
     return (temperature - 1000 / 7000.0) * 180.0;
 }
+function hueToTemperature(hue) {
+    var ctemp;
+    if (hue <= 180){
+        ctemp = ((hue/180.0)*7000.0)+1000.0;
+    } else {
+        ctemp = (((180-(hue-180))/180.0)*7000.0)+1000.0;
+    }
+    return ctemp;
+}
 function HSVToTemperature(hsv) {
 
 }
@@ -193,8 +202,8 @@ function LightifyAccessory(platform, device) {
     var self = this;
     if(lightify.isColorSupported(device.type)) {
         this.colorBulb(platform);
-//    } else {
-//        this.temperatureBulb(platform);
+    } else if (lightify.isTemperatureSupported(device.type)) {
+        this.temperatureBulb(platform);
     }
     if (lightify.isBrightnessSupported(device.type)) {
 
@@ -304,7 +313,6 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
     this.service.addOptionalCharacteristic(Characteristic.Brightness);
 
     this.log.error('temperatureBulb');
-    this.device.temperature = 2700;
     var hsv = temperatureToHue(this.device.temperature);
 
     //this.service.getCharacteristic(Characteristic.Hue).value = hsv.h * 360;
@@ -314,14 +322,23 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
     var self = this;
     this.service.getCharacteristic(Characteristic.Hue)
     .on('get', function(callback) {
-        self.log.error('get Hue temp:', self.device.temperature);
-        h = temperatureToHue(self.device.temperature);
+        self.log.error('get temperature:', self.device.temperature);
+        h = hueToTemperature(self.device.temperature)
         self.log.error('get Hue:', h);
-        callback(null, h);
+        callback(null, 1);
     })
-    .on('set', function(h, callback) {
-        self.log.error('set Hue:', h);
-        callback(null);
+    .on('set', function(hue, callback) {
+        self.log.error('sent hue to set: ', hue);
+        var temperature = hueToTemperature(hue);
+        var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
+        connection.connect().then(function() {
+            return connection.nodeTemperature(self.device.mac, temperature, 0).then(function(data) {
+                self.log.error('set temperature (via hue): ', temperature); 
+                self.device.temperature = temperature;
+                callback(null, 1);
+                return connection.dispose();
+            });
+        });
     });
 
     this.service.getCharacteristic(Characteristic.Saturation)
@@ -331,7 +348,7 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
     })
     .on('set', function(s, callback) {
         self.log.error("Saturation: ", s);
-        callback(null);
+        callback(null, true);
     });
 }
 LightifyAccessory.prototype.updateDevice = function(device) {
