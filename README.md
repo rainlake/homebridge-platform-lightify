@@ -1,8 +1,10 @@
-This is an OSRAM Lightify plugin for homebridge.
-please report your issue on github.
+# OSRAM Lightify Platform for homebridge
+This is an OSRAM Lightify plugin for [homebridge](https://github.com/nfarina/homebridge).
 
-Usage:   put below to you homebridge config file
-
+## Setup
+1. Add via `npm install -g homebridge-platform-lightify`
+2. Add to the homebridge config.json in the `platforms` section
+```json
 {
   "platform": "Lightify",
   "bridge_ip": "x.x.x.x",
@@ -10,6 +12,15 @@ Usage:   put below to you homebridge config file
   "showGroups" : true,
   "hideNodes" : false
 }
+```  
+bridge_ip: ip address of your lightify bridge/hub  
+showGroups: defaults to `false`  
+hideNodes: defaults to `false`  
+All other fields are required
 
-showGroups: default to false
-hideNodes: default to false
+## About
+This plugin uses the proprietary lightify protocol that the hub uses to commnicate with the lights, rather than the JSON API provided by lightify.
+
+This plugin works with all Lightify products including Tunable White bulbs and outlets.  Sensors are not supported, but are hidden.
+
+Please report any issues on github.
