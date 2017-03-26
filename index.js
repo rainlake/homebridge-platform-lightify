@@ -130,6 +130,7 @@ LightifyPlatform.prototype.discover = function(connection) {
                         return connection
                         .getZoneInfo(zone.id)
                         .then(function(zoneInfo){
+                            zone.online = 2; // group always online
                             zone.status = 0; // default to off
                             zone.isBrightnessSupported = false;
                             zone.isColorSupported = false;
@@ -141,8 +142,7 @@ LightifyPlatform.prototype.discover = function(connection) {
                                 var device = data.result.find(function(d) {
                                     return d.mac === mac;
                                 });
-                                self.log.info('Lightify Zone device type=[%s]', device.type);
-                                if (device && device.online && device.status === 0) {
+                                if (device && device.online && device.status === 1) {
                                     zone.status = 1;
                                     self.log.info('Lightify Zone is on');
                                 }
