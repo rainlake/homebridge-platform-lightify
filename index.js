@@ -130,7 +130,10 @@ LightifyPlatform.prototype.discover = function(connection) {
                         return connection
                         .getZoneInfo(zone.id)
                         .then(function(zoneInfo){
-                            zone.status = 1; // default to on
+                            zone.status = 0; // default to off
+                            zone.isBrightnessSupported = false;
+                            zone.isColorSupported = false;
+                            zone.isTemperatureSupported = false;
                             if(!zoneInfo.result || zoneInfo.result.length == 0) {
                                 return Promise.reject('no result for zone');
                             }
@@ -138,9 +141,27 @@ LightifyPlatform.prototype.discover = function(connection) {
                                 var device = data.result.find(function(d) {
                                     return d.mac === mac;
                                 });
+                                self.log.info('Lightify Zone device type=[%s]', device.type);
                                 if (device && device.online && device.status === 0) {
-                                    zone.status = 0;
-                                    break;
+                                    zone.status = 1;
+                                    self.log.info('Lightify Zone is on');
+                                }
+                                if(device && lightify.isBrightnessSupported(device.type)) {
+                                    zone.isBrightnessSupported = true;
+                                    zone.brightness = device.brightness;
+                                    self.log.info('Lightify Zone support brightness, current brightness=[%d]', device.brightness);
+                                }
+                                if(device && lightify.isColorSupported(device.type)) {
+                                    zone.isColorSupported = true;
+                                    zone.red = device.red;
+                                    zone.green = device.green;
+                                    c = device.blue;
+                                    self.log.info('Lightify Zone support color, current red=[%d], green=[%d], blue=[%d]', device.red, zone.green, zone.blue);
+                                }
+                                if(device && lightify.isTemperatureSupported(device.type)) {
+                                    zone.isTemperatureSupported = true;
+                                    zone.temperature = device.temperature;
+                                    self.log.info('Lightify Zone support temperature, current temperature=[%d]', device.temperature);
                                 }
                             }
                             return Promise.resolve();
@@ -174,7 +195,7 @@ LightifyPlatform.prototype.accessories = function(callback) {
                 self.log.info('Lightify Bulb [%s]', light.name);
                 self.foundAccessories.push(new LightifyOutlet(self, light));
             } else if(!light.type) {
-                self.foundAccessories.push(new LightifyZone(self, light));
+                self.foundAccessories.push(new LightifyAccessory(self, light));
             }
         });
         connection.dispose();
@@ -191,19 +212,18 @@ function LightifyAccessory(platform, device) {
     this.name = device.name;
     this.platform = platform;
 
-    this.service = new Lightbulb(device.name);
+    this.service = new Lightbulb(device.name || 'Unknown');
 
     this.service.getCharacteristic(Characteristic.Name).value = device.name;
     this.service.getCharacteristic(Characteristic.On).value = device.status;
 
     var self = this;
-    if(lightify.isColorSupported(device.type)) {
+    if(device.isColorSupported || lightify.isColorSupported(device.type)) {
         this.colorBulb(platform);
-    } else if (lightify.isTemperatureSupported(device.type)) {
+    } else if (device.isTemperatureSupported || lightify.isTemperatureSupported(device.type)) {
         this.temperatureBulb(platform);
     }
-    if (lightify.isBrightnessSupported(device.type)) {
-
+    if (device.isBrightnessSupported || lightify.isBrightnessSupported(device.type)) {
         this.service.addOptionalCharacteristic(Characteristic.Brightness);
         this.service.getCharacteristic(Characteristic.Brightness).value = self.device.brightness;
         this.service.getCharacteristic(Characteristic.Brightness)
@@ -217,7 +237,7 @@ function LightifyAccessory(platform, device) {
             self.setBrightnessTimer = setTimeout(function() {
                 var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
                 connection.connect().then(function() {
-                    return connection.nodeBrightness(self.device.mac, brightness);
+                    return connection.nodeBrightness(self.device.mac, brightness, 0, self.device.type ? false : true);
                 }).then(function() {
                     self.device.brightness = brightness;
                     return connection.dispose();
@@ -234,7 +254,7 @@ function LightifyAccessory(platform, device) {
         .on('set', function(state, callback) {
             var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
             connection.connect().then(function() {
-                return connection.nodeOnOff(self.device.mac, state ? true : false);
+                return connection.nodeOnOff(self.device.mac, state ? true : false, self.device.type ? false : true);
             }).then(function() {
                 self.device.status = state;
                 callback(null);
@@ -261,7 +281,7 @@ LightifyAccessory.prototype.setHSV = function(hsv) {
 
         connection.connect().then(function() {
             return connection.nodeColor(self.device.mac,
-                self.device.red, self.device.green, self.device.blue, self.device.alpha);
+                self.device.red, self.device.green, self.device.blue, self.device.alpha, 0, self.device.type ? false : true);
         }).then(function() {
             return connection.dispose();
         });
@@ -325,7 +345,7 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
         var temperature = hueToTemperature(hue);
         var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
         connection.connect().then(function() {
-            return connection.nodeTemperature(self.device.mac, temperature, 0).then(function(data) {
+            return connection.nodeTemperature(self.device.mac, temperature, 0, self.device.type ? false : true).then(function(data) {
                 self.log.error('set temperature (via hue): ', temperature); 
                 self.device.temperature = temperature;
                 callback(null, 1);
@@ -412,55 +432,6 @@ LightifyOutlet.prototype.getServices = function() {
     service.setCharacteristic(Characteristic.Name, this.name)
         .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
         .setCharacteristic(Characteristic.Model, 'Lightify Outlet')
-        .setCharacteristic(Characteristic.SerialNumber, '')
-        .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
-        .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
-    services.push(service);
-    if(this.service) {
-        services.push(this.service);
-    }
-    return services;
-}
-
-function LightifyZone(platform, device) {
-    this.log = platform.log;
-    this.device = device;
-    this.name = device.name;
-    this.platform = platform;
-
-    this.service = new Service.Switch(device.name);
-
-    this.service.getCharacteristic(Characteristic.Name).value = device.name;
-    this.service.getCharacteristic(Characteristic.On).value = device.status;
-
-    var self = this;
-    this.service.getCharacteristic(Characteristic.On)
-        .on('get', function(callback) {
-            callback(null, self.device.status);
-        })
-        .on('set', function(state, callback) {
-            var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
-            connection.connect().then(function() {
-                return connection.nodeOnOff(self.device.mac, state ? true : false, true);
-            }).then(function() {
-                self.device.status = state;
-                callback(null);
-                return connection.dispose();
-            }).catch(function() {
-                callback(null);
-                return connection.dispose();
-            });
-        });
-}
-LightifyZone.prototype.updateDevice = function(device) {
-    this.device = device;
-}
-LightifyZone.prototype.getServices = function() {
-    var services = [];
-    var service = new Service.AccessoryInformation();
-    service.setCharacteristic(Characteristic.Name, this.name)
-        .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
-        .setCharacteristic(Characteristic.Model, 'Lightify Group')
         .setCharacteristic(Characteristic.SerialNumber, '')
         .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
         .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
