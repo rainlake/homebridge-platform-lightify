@@ -87,9 +87,6 @@ function hueToTemperature(hue) {
     }
     return ctemp;
 }
-function HSVToTemperature(hsv) {
-
-}
 function LightifyPlatform(log, config) {
     this.config = config;
     this.log = log;
@@ -314,10 +311,6 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
 
     this.log.error('temperatureBulb');
     var hsv = temperatureToHue(this.device.temperature);
-
-    //this.service.getCharacteristic(Characteristic.Hue).value = hsv.h * 360;
-    //this.service.getCharacteristic(Characteristic.Saturation).value = hsv.h * 100;
-    //this.service.getCharacteristic(Characteristic.Brightness).value = hsv.v * 100;
 
     var self = this;
     this.service.getCharacteristic(Characteristic.Hue)
