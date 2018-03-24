@@ -325,43 +325,31 @@ LightifyAccessory.prototype.colorBulb = function(platform) {
     });
 }
 LightifyAccessory.prototype.temperatureBulb = function(platform) {
-    this.service.addOptionalCharacteristic(Characteristic.Hue);
-    this.service.addOptionalCharacteristic(Characteristic.Saturation);
+    this.service.addOptionalCharacteristic(Characteristic.ColorTemperature);
     this.service.addOptionalCharacteristic(Characteristic.Brightness);
+    var mired = 1000000 / this.device.temperature;
 
-    this.log.error('temperatureBulb');
-    var hsv = temperatureToHue(this.device.temperature);
+    this.log.error('temperatureBulb', mired);
 
     var self = this;
-    this.service.getCharacteristic(Characteristic.Hue)
+    this.service.getCharacteristic(Characteristic.ColorTemperature)
     .on('get', function(callback) {
-        self.log.error('get temperature:', self.device.temperature);
-        h = hueToTemperature(self.device.temperature)
-        self.log.error('get Hue:', h);
-        callback(null, 1);
+        self.log.error('get temperature:', self.device.temperature, 'mired:', mired);
+        callback(null, mired);
     })
-    .on('set', function(hue, callback) {
-        self.log.error('sent hue to set: ', hue);
-        var temperature = hueToTemperature(hue);
+    .on('set', function(mired, callback) {
+        var temperature = 1000000 / mired;
+        self.log.error('sent temperature to set: ', temperature, 'mired:', mired);
+        
         var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
         connection.connect().then(function() {
             return connection.nodeTemperature(self.device.mac, temperature, 0, self.device.type ? false : true).then(function(data) {
-                self.log.error('set temperature (via hue): ', temperature); 
+                self.log.error('set temperature (via mired): ', temperature); 
                 self.device.temperature = temperature;
-                callback(null, 1);
+                callback(null, mired);
                 return connection.dispose();
             });
         });
-    });
-
-    this.service.getCharacteristic(Characteristic.Saturation)
-    .on('get', function(callback) {
-        self.log.error('get Saturation');
-        callback(null, 1);
-    })
-    .on('set', function(s, callback) {
-        self.log.error("Saturation: ", s);
-        callback(null, true);
     });
 }
 LightifyAccessory.prototype.updateDevice = function(device) {
