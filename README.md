@@ -2,7 +2,7 @@
 This is an OSRAM Lightify plugin for [homebridge](https://github.com/nfarina/homebridge).
 
 ## Setup
-1. Add via `npm install -g homebridge-platform-lightify`
+1. Add via `npm install -g homebridge-platform-lightify-mg`
 2. Add to the homebridge config.json in the `platforms` section
 ```json
 {
