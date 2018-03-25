@@ -1,6 +1,6 @@
 var moment = require('moment');
 var util = require('util');
-var lightify = require('node-lightify');
+var lightify = require('node-lightify-mg');
 var Service, Characteristic;
 var Lightbulb;
 
