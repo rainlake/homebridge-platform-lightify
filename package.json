@@ -21,6 +21,6 @@
     "moment": "^2.21.0",
     "promise": ">=7.1.1",
     "util": "^0.10.3",
-    "node-lightify-mg" : "^2.1.12"
+    "node-lightify" : "^2.1.13"
   }
 }
