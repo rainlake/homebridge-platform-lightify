@@ -1,5 +1,5 @@
 {
-  "name": "homebridge-platform-lightify-mg",
+  "name": "homebridge-platform-lightify",
   "version": "0.3.5",
   "description": "Lightify plugin for homebridge: https://github.com/nfarina/homebridge",
   "license": "ISC",
@@ -8,10 +8,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git://github.com/mylesgray/homebridge-platform-lightify.git"
+    "url": "git://github.com/rainlake/homebridge-platform-lightify.git"
   },
   "bugs": {
-    "url": "https://github.com/mylesgray/homebridge-platform-lightify/issues"
+    "url": "https://github.com/rainlake/homebridge-platform-lightify/issues"
   },
   "engines": {
     "node": ">=0.12.0",
