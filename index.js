@@ -96,7 +96,7 @@ LightifyPlatform.prototype.refreshTimer = function(timeout) {
     setTimeout(function() {
         var connection = new lightify.lightify(self.config.bridge_ip, self.log);
         self.discover(connection).then(function(data) {
-            self.log.info('Discover Success');
+            self.log.debug('Discover Success');
             data.result.forEach(function(light) {
                 var assc = self.foundAccessories.find(function(assc) {
                     return assc.device && assc.device.mac == light.mac;
@@ -116,7 +116,7 @@ LightifyPlatform.prototype.refreshTimer = function(timeout) {
 LightifyPlatform.prototype.discover = function(connection) {
     var self = this;
     return connection.connect().then(function() {
-        self.log.info('Connected to Lightify Bridge');
+        self.log.debug('Connected to Lightify Bridge');
         //have to discover nodes for light status of group
         return connection.discover();
     }).then(function(data) {
@@ -144,24 +144,24 @@ LightifyPlatform.prototype.discover = function(connection) {
                                 });
                                 if (device && device.online && device.status === 1) {
                                     zone.status = 1;
-                                    self.log.info('Lightify Zone is on');
+                                    self.log.debug('Lightify Zone is on');
                                 }
                                 if(device && lightify.isBrightnessSupported(device.type)) {
                                     zone.isBrightnessSupported = true;
                                     zone.brightness = device.brightness;
-                                    self.log.info('Lightify Zone support brightness, current brightness=[%d]', device.brightness);
+                                    self.log.debug('Lightify Zone support brightness, current brightness=[%d]', device.brightness);
                                 }
                                 if(device && lightify.isColorSupported(device.type)) {
                                     zone.isColorSupported = true;
                                     zone.red = device.red;
                                     zone.green = device.green;
                                     c = device.blue;
-                                    self.log.info('Lightify Zone support color, current red=[%d], green=[%d], blue=[%d]', device.red, zone.green, zone.blue);
+                                    self.log.debug('Lightify Zone support color, current red=[%d], green=[%d], blue=[%d]', device.red, zone.green, zone.blue);
                                 }
                                 if(device && lightify.isTemperatureSupported(device.type)) {
                                     zone.isTemperatureSupported = true;
                                     zone.temperature = device.temperature;
-                                    self.log.info('Lightify Zone support temperature, current temperature=[%d]', device.temperature);
+                                    self.log.debug('Lightify Zone support temperature, current temperature=[%d]', device.temperature);
                                 }
                             }
                             return Promise.resolve();
@@ -325,43 +325,31 @@ LightifyAccessory.prototype.colorBulb = function(platform) {
     });
 }
 LightifyAccessory.prototype.temperatureBulb = function(platform) {
-    this.service.addOptionalCharacteristic(Characteristic.Hue);
-    this.service.addOptionalCharacteristic(Characteristic.Saturation);
+    this.service.addOptionalCharacteristic(Characteristic.ColorTemperature);
     this.service.addOptionalCharacteristic(Characteristic.Brightness);
+    var mired = 1000000 / this.device.temperature;
 
-    this.log.error('temperatureBulb');
-    var hsv = temperatureToHue(this.device.temperature);
+    this.log.error('temperatureBulb', mired);
 
     var self = this;
-    this.service.getCharacteristic(Characteristic.Hue)
+    this.service.getCharacteristic(Characteristic.ColorTemperature)
     .on('get', function(callback) {
-        self.log.error('get temperature:', self.device.temperature);
-        h = hueToTemperature(self.device.temperature)
-        self.log.error('get Hue:', h);
-        callback(null, 1);
+        self.log.error('get temperature:', self.device.temperature, 'mired:', mired);
+        callback(null, mired);
     })
-    .on('set', function(hue, callback) {
-        self.log.error('sent hue to set: ', hue);
-        var temperature = hueToTemperature(hue);
+    .on('set', function(mired, callback) {
+        var temperature = 1000000 / mired;
+        self.log.error('sent temperature to set: ', temperature, 'mired:', mired);
+        
         var connection = new lightify.lightify(platform.config.bridge_ip, self.log);
         connection.connect().then(function() {
             return connection.nodeTemperature(self.device.mac, temperature, 0, self.device.type ? false : true).then(function(data) {
-                self.log.error('set temperature (via hue): ', temperature); 
+                self.log.error('set temperature (via mired): ', temperature); 
                 self.device.temperature = temperature;
-                callback(null, 1);
+                callback(null, mired);
                 return connection.dispose();
             });
         });
-    });
-
-    this.service.getCharacteristic(Characteristic.Saturation)
-    .on('get', function(callback) {
-        self.log.error('get Saturation');
-        callback(null, 1);
-    })
-    .on('set', function(s, callback) {
-        self.log.error("Saturation: ", s);
-        callback(null, true);
     });
 }
 LightifyAccessory.prototype.updateDevice = function(device) {
