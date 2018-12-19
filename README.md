@@ -23,6 +23,6 @@ This plugin uses the proprietary lightify protocol that the hub uses to commnica
 
 This plugin works with all Lightify products including Tunable White bulbs and outlets. 
 
-Sensors are supported. The sensor will need to be assigned an action in the Lightify app in order to update. The device for which the sensor takes action does not need to be reachable. You can use a spare bulb and have all sensors assigned an action to this bulb.
+Contact sensors are now supported with a resolution of 2 seconds.
 
 Please report any issues on github.
