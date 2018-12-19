@@ -21,6 +21,8 @@ All other fields are required
 ## About
 This plugin uses the proprietary lightify protocol that the hub uses to commnicate with the lights, rather than the JSON API provided by lightify.
 
-This plugin works with all Lightify products including Tunable White bulbs and outlets.  Sensors are not supported, but are hidden.
+This plugin works with all Lightify products including Tunable White bulbs and outlets. 
+
+Sensors are supported. The sensor will need to be assigned an action in the Lightify app in order to update. The device for which the sensor takes action does not need to be reachable. You can use a spare bulb and have all sensors assigned an action to this bulb.
 
 Please report any issues on github.
