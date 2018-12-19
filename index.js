@@ -113,8 +113,7 @@ LightifyPlatform.prototype.refreshTimer = function(timeout) {
             self.log.info('Discover Failed');
             self.log.error(error);
         });
-		// original value here was 30 seconds
-		// Lightify hub has no apparent max so we poll faster
+		/* the Lightify gateway has no apparent restriction on polling frequency - lets poll every 2 seconds */
         self.refreshTimer(2); 
     }, (timeout || 30) * 1000);
 }
@@ -208,6 +207,7 @@ LightifyPlatform.prototype.accessories = function(callback) {
         });
         connection.dispose();
         callback(self.foundAccessories);
+        //self.log.info('Lightify accessories');
         self.refreshTimer();
     }).catch(function(error) {
         self.log.info('Discovered failed', error);
@@ -450,19 +450,23 @@ function LightifySensor(platform, device) {
     this.name = device.name;
     this.platform = platform;
 
-    this.service = new Service.MotionSensor(device.name);
+    this.service = new Service.ContactSensor(device.name);
 
     this.service.getCharacteristic(Characteristic.Name).value = device.name;
-    this.service.getCharacteristic(Characteristic.MotionDetected).value = true;
-
+    this.service.getCharacteristic(Characteristic.ContactSensorState).value = true;
+	
     var self = this;
-    this.service.getCharacteristic(Characteristic.MotionDetected)
+    this.service.getCharacteristic(Characteristic.ContactSensorState)
     .on('get', function(callback) {
         callback(null, self.device.online == 2 && self.device.green == 1)
     });
+	
 }
 LightifySensor.prototype.updateDevice = function(device) {
     this.device = device;
+    var self = this;
+	/* send updated status to HomeKit */
+	self.service.getCharacteristic(Characteristic.ContactSensorState).updateValue(self.device.green);
 }
 LightifySensor.prototype.getServices = function() {
     var services = [];
