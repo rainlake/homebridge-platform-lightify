@@ -21,6 +21,8 @@ All other fields are required
 ## About
 This plugin uses the proprietary lightify protocol that the hub uses to commnicate with the lights, rather than the JSON API provided by lightify.
 
-This plugin works with all Lightify products including Tunable White bulbs and outlets.  Sensors are not supported, but are hidden.
+This plugin works with all Lightify products including Tunable White bulbs and outlets. 
+
+Contact sensors are now supported with a resolution of 2 seconds.
 
 Please report any issues on github.

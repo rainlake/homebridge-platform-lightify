@@ -22,7 +22,6 @@ module.exports = function(homebridge) {
     homebridge.registerPlatform("homebridge-platform-lightify", "Lightify", LightifyPlatform);
 }
 
-
 function HSVtoRGB(h, s, v) {
     var r, g, b, i, f, p, q, t;
     if (arguments.length === 1) {
@@ -47,6 +46,7 @@ function HSVtoRGB(h, s, v) {
         b: Math.round(b * 255)
     };
 }
+
 /* accepts parameters
  * r  Object = {r:x, g:y, b:z}
  * OR
@@ -75,9 +75,11 @@ function RGBtoHSV(r, g, b) {
         v: v
     };
 }
+
 function temperatureToHue(temperature) {
     return (temperature - 1000 / 7000.0) * 180.0;
 }
+
 function hueToTemperature(hue) {
     var ctemp;
     if (hue <= 180){
@@ -87,6 +89,7 @@ function hueToTemperature(hue) {
     }
     return ctemp;
 }
+
 function LightifyPlatform(log, config) {
     this.config = config;
     this.log = log;
@@ -110,7 +113,8 @@ LightifyPlatform.prototype.refreshTimer = function(timeout) {
             self.log.info('Discover Failed');
             self.log.error(error);
         });
-        self.refreshTimer(30);
+		/* the Lightify gateway has no apparent restriction on polling frequency - lets poll every 2 seconds */
+        self.refreshTimer(2); 
     }, (timeout || 30) * 1000);
 }
 LightifyPlatform.prototype.discover = function(connection) {
@@ -192,20 +196,25 @@ LightifyPlatform.prototype.accessories = function(callback) {
                 self.log.info('Lightify Light [%s]', light.name);
                 self.foundAccessories.push(new LightifyAccessory(self, light));
             } else if (!self.config.hideNodes && light.type && lightify.isPlug(light.type)) {
-                self.log.info('Lightify Bulb [%s]', light.name);
+                self.log.info('Lightify Plug [%s]', light.name);
                 self.foundAccessories.push(new LightifyOutlet(self, light));
+            } else if (!self.config.hideNodes && light.type && lightify.isSensor(light.type)) {
+                self.log.info('Lightify Sensor [%s]', light.name);
+                self.foundAccessories.push(new LightifySensor(self, light));
             } else if(!light.type) {
                 self.foundAccessories.push(new LightifyAccessory(self, light));
             }
         });
         connection.dispose();
         callback(self.foundAccessories);
+        //self.log.info('Lightify accessories');
         self.refreshTimer();
     }).catch(function(error) {
         self.log.info('Discovered failed', error);
         throw 'can not connect to lightify bridge.';
     });
 }
+
 function LightifyAccessory(platform, device) {
     this.log = platform.log;
     this.device = device;
@@ -355,7 +364,6 @@ LightifyAccessory.prototype.temperatureBulb = function(platform) {
 LightifyAccessory.prototype.updateDevice = function(device) {
     this.device = device;
 }
-
 LightifyAccessory.prototype.getServices = function() {
     var services = [];
     var service = new Service.AccessoryInformation();
@@ -376,6 +384,7 @@ LightifyAccessory.prototype.getServices = function() {
     }
     return services;
 }
+
 function LightifyOutlet(platform, device) {
     this.log = platform.log;
     this.device = device;
@@ -420,6 +429,51 @@ LightifyOutlet.prototype.getServices = function() {
     service.setCharacteristic(Characteristic.Name, this.name)
         .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
         .setCharacteristic(Characteristic.Model, 'Lightify Outlet')
+        .setCharacteristic(Characteristic.SerialNumber, this.device.friendlyMac)
+        .setCharacteristic(Characteristic.FirmwareRevision,
+            ((this.device.firmware_version >> 24) & 0xFF) + '.' +
+            ((this.device.firmware_version >> 16) & 0xFF) + '.' +
+            ((this.device.firmware_version >> 8) & 0xFF) + '.' +
+            (this.device.firmware_version & 0xFF)
+        )
+        .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
+    services.push(service);
+    if(this.service) {
+        services.push(this.service);
+    }
+    return services;
+}
+
+function LightifySensor(platform, device) {
+    this.log = platform.log;
+    this.device = device;
+    this.name = device.name;
+    this.platform = platform;
+
+    this.service = new Service.ContactSensor(device.name);
+
+    this.service.getCharacteristic(Characteristic.Name).value = device.name;
+    this.service.getCharacteristic(Characteristic.ContactSensorState).value = true;
+	
+    var self = this;
+    this.service.getCharacteristic(Characteristic.ContactSensorState)
+    .on('get', function(callback) {
+        callback(null, self.device.online == 2 && self.device.green == 1)
+    });
+	
+}
+LightifySensor.prototype.updateDevice = function(device) {
+    this.device = device;
+    var self = this;
+	/* send updated status to HomeKit */
+	self.service.getCharacteristic(Characteristic.ContactSensorState).updateValue(self.device.green);
+}
+LightifySensor.prototype.getServices = function() {
+    var services = [];
+    var service = new Service.AccessoryInformation();
+    service.setCharacteristic(Characteristic.Name, this.name)
+        .setCharacteristic(Characteristic.Manufacturer, 'Lightify')
+        .setCharacteristic(Characteristic.Model, 'Lightify Sensor')
         .setCharacteristic(Characteristic.SerialNumber, '')
         .setCharacteristic(Characteristic.FirmwareRevision, '1.0.0')
         .setCharacteristic(Characteristic.HardwareRevision, '1.0.0');
