@@ -159,7 +159,7 @@ LightifyPlatform.prototype.discover = function(connection) {
                                     zone.isColorSupported = true;
                                     zone.red = device.red;
                                     zone.green = device.green;
-                                    c = device.blue;
+                                    zone.blue = device.blue;
                                     self.log.debug('Lightify Zone support color, current red=[%d], green=[%d], blue=[%d]', device.red, zone.green, zone.blue);
                                 }
                                 if(device && lightify.isTemperatureSupported(device.type)) {
@@ -305,7 +305,7 @@ LightifyAccessory.prototype.colorBulb = function(platform) {
     var hsv = RGBtoHSV(this.device.red, this.device.green, this.device.blue);
 
     this.service.getCharacteristic(Characteristic.Hue).value = hsv.h * 360;
-    this.service.getCharacteristic(Characteristic.Saturation).value = hsv.h * 100;
+    this.service.getCharacteristic(Characteristic.Saturation).value = hsv.s * 100;
     this.service.getCharacteristic(Characteristic.Brightness).value = hsv.v * 100;
 
     var self = this;
